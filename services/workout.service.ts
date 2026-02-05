@@ -43,3 +43,41 @@ export const getWorkoutById = async (id: string): Promise<Workout | null> => {
         }
     });
 };
+
+/**
+ * Creates a new workout template with its associated exercises.
+ */
+export const createWorkout = async (data: {
+    name: string;
+    userId: string;
+    exercises: { exerciseId: string; order: number }[];
+}): Promise<Workout> => {
+    return await db.workout.create({
+        data: {
+            name: data.name,
+            userId: data.userId,
+            exercises: {
+                create: data.exercises.map((item) => ({
+                    exerciseId: item.exerciseId,
+                    order: item.order,
+                })),
+            },
+        },
+        include: {
+            exercises: {
+                include: {
+                    exercise: true,
+                },
+            },
+        },
+    }) as any;
+};
+
+/**
+ * Deletes a workout template.
+ */
+export const deleteWorkout = async (id: string): Promise<void> => {
+    await db.workout.delete({
+        where: { id },
+    });
+};

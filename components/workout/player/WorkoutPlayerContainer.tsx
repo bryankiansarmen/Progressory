@@ -1,0 +1,171 @@
+"use client";
+
+import { useState } from "react";
+import { Workout, Exercise } from "@/types";
+import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
+import PlayerHeader from "./PlayerHeader";
+import ExerciseLoggingCard from "./ExerciseLoggingCard";
+import SessionSummary from "./SessionSummary";
+import RestTimerOverlay from "./RestTimerOverlay";
+import SessionCompleteModal from "./SessionCompleteModal";
+import { logWorkout, getLastLogForExercise } from "@/services/logging.service";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+interface WorkoutPlayerContainerProps {
+    template: Workout;
+}
+
+export interface SetRecord {
+    reps: number;
+    weight: number;
+    isDone: boolean;
+}
+
+export interface ExerciseSession {
+    exercise: Exercise;
+    sets: SetRecord[];
+}
+
+export default function WorkoutPlayerContainer({ template }: WorkoutPlayerContainerProps) {
+    const router = useRouter();
+    const { formattedTime, seconds } = useWorkoutTimer();
+
+    // Initialize session state with exercises from template
+    const [sessionData, setSessionData] = useState<ExerciseSession[]>(
+        template.exercises?.map(we => ({
+            exercise: we.exercise!,
+            sets: [{ reps: 0, weight: 0, isDone: false }] // Start with one empty set
+        })) || []
+    );
+
+    const [activeExerciseIndex, setActiveExerciseIndex] = useState(0);
+    const [restTimeRemaining, setRestTimeRemaining] = useState<number | null>(null);
+    const [isFinishing, setIsFinishing] = useState(false);
+    const [showSummary, setShowSummary] = useState(false);
+    const [lastLog, setLastLog] = useState<any>(null);
+
+    // Fetch history when exercise changes
+    useEffect(() => {
+        const fetchHistory = async () => {
+            const exercise = sessionData[activeExerciseIndex]?.exercise;
+            if (exercise) {
+                const history = await getLastLogForExercise("user_123", exercise.id);
+                setLastLog(history);
+            }
+        };
+        fetchHistory();
+    }, [activeExerciseIndex, sessionData]);
+
+    const handleUpdateSet = (exerciseIndex: number, setIndex: number, data: Partial<SetRecord>) => {
+        const newData = [...sessionData];
+        newData[exerciseIndex].sets[setIndex] = { ...newData[exerciseIndex].sets[setIndex], ...data };
+        setSessionData(newData);
+    };
+
+    const handleAddSet = (exerciseIndex: number) => {
+        const newData = [...sessionData];
+        const lastSet = newData[exerciseIndex].sets[newData[exerciseIndex].sets.length - 1];
+        newData[exerciseIndex].sets.push({
+            reps: lastSet?.reps || 0,
+            weight: lastSet?.weight || 0,
+            isDone: false
+        });
+        setSessionData(newData);
+    };
+
+    const handleRemoveSet = (exerciseIndex: number, setIndex: number) => {
+        const newData = [...sessionData];
+        newData[exerciseIndex].sets = newData[exerciseIndex].sets.filter((_, i) => i !== setIndex);
+        setSessionData(newData);
+    };
+
+    const handleToggleSetDone = (exerciseIndex: number, setIndex: number) => {
+        const currentDone = sessionData[exerciseIndex].sets[setIndex].isDone;
+        handleUpdateSet(exerciseIndex, setIndex, { isDone: !currentDone });
+
+        // If marking as done, trigger a rest timer (default 90s)
+        if (!currentDone) {
+            setRestTimeRemaining(90);
+        }
+    };
+
+    const handleFinish = async () => {
+        setIsFinishing(true);
+        try {
+            await logWorkout({
+                workoutId: template.id,
+                userId: "user_123", // Mock
+                duration: Math.floor(seconds / 60),
+                entries: sessionData.map(ed => ({
+                    exerciseId: ed.exercise.id,
+                    sets: ed.sets.filter(s => s.isDone).map(s => ({
+                        reps: s.reps,
+                        weight: s.weight,
+                        isDone: true
+                    }))
+                })).filter(e => e.sets.length > 0)
+            });
+            setShowSummary(true);
+        } catch (error) {
+            console.error("Failed to log workout:", error);
+        } finally {
+            setIsFinishing(false);
+        }
+    };
+
+    const totalSets = sessionData.reduce((acc, ed) => acc + ed.sets.filter(s => s.isDone).length, 0);
+
+    const activeExercise = sessionData[activeExerciseIndex];
+
+    return (
+        <div className="flex flex-col min-h-screen">
+            <PlayerHeader
+                templateName={template.name}
+                timer={formattedTime}
+                onFinish={handleFinish}
+                isFinishing={isFinishing}
+            />
+
+            <div className="flex-1 container mx-auto px-4 py-6 space-y-8 max-w-3xl">
+                {activeExercise ? (
+                    <ExerciseLoggingCard
+                        exercise={activeExercise.exercise}
+                        sets={activeExercise.sets}
+                        lastLog={lastLog}
+                        onUpdateSet={(idx: number, data: Partial<SetRecord>) => handleUpdateSet(activeExerciseIndex, idx, data)}
+                        onAddSet={() => handleAddSet(activeExerciseIndex)}
+                        onRemoveSet={(idx: number) => handleRemoveSet(activeExerciseIndex, idx)}
+                        onToggleDone={(idx: number) => handleToggleSetDone(activeExerciseIndex, idx)}
+                    />
+                ) : (
+                    <div className="text-center py-20 bg-card rounded-3xl border-2">
+                        No exercises in this workout.
+                    </div>
+                )}
+
+                <SessionSummary
+                    exercises={sessionData.map(sd => sd.exercise.name)}
+                    activeIndex={activeExerciseIndex}
+                    onSelectExercise={setActiveExerciseIndex}
+                />
+            </div>
+
+            {restTimeRemaining !== null && (
+                <RestTimerOverlay
+                    seconds={restTimeRemaining}
+                    onClose={() => setRestTimeRemaining(null)}
+                    onAddSeconds={(s: number) => setRestTimeRemaining(prev => (prev || 0) + s)}
+                />
+            )}
+
+            {showSummary && (
+                <SessionCompleteModal
+                    duration={Math.floor(seconds / 60)}
+                    exerciseCount={sessionData.filter(ed => ed.sets.some(s => s.isDone)).length}
+                    setCount={totalSets}
+                />
+            )}
+        </div>
+    );
+}
