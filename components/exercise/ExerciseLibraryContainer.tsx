@@ -43,7 +43,11 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
                 setHasMore(false);
             }
 
-            setExercises(prev => [...prev, ...nextExercises]);
+            setExercises(prev => {
+                const existingIds = new Set(prev.map(ex => ex.id));
+                const uniqueNew = nextExercises.filter(ex => !existingIds.has(ex.id));
+                return [...prev, ...uniqueNew];
+            });
             setOffset(prev => prev + nextExercises.length);
         } catch (error) {
             console.error("Failed to load more exercises:", error);
@@ -114,6 +118,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
 
     const handleExerciseCreated = (newExercise: Exercise) => {
         setExercises((prev) => [newExercise, ...prev]);
+        setOffset(prev => prev + 1);
     };
 
     return (
