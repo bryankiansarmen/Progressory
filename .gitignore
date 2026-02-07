@@ -47,6 +47,7 @@ next-env.d.ts
 /lib/generated/prisma
 
 .agent
+.gemini
 
 # local database
 *.db

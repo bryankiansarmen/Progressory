@@ -26,6 +26,11 @@ export default function WorkoutBuilderContainer({ allExercises }: WorkoutBuilder
         setIsPickerOpen(false);
     };
 
+    const handleAddMultiple = (exercises: Exercise[]) => {
+        setSelectedExercises([...selectedExercises, ...exercises]);
+        setIsPickerOpen(false);
+    };
+
     const handleRemoveExercise = (index: number) => {
         setSelectedExercises(selectedExercises.filter((_, i) => i !== index));
     };
@@ -157,7 +162,12 @@ export default function WorkoutBuilderContainer({ allExercises }: WorkoutBuilder
                                 <Trash2 className="w-4 h-4 rotate-45" /> {/* Close icon substitute */}
                             </Button>
                         </div>
-                        <ExercisePicker allExercises={allExercises} onSelect={handleAddExercise} />
+                        <ExercisePicker
+                            allExercises={allExercises}
+                            onSelect={handleAddExercise}
+                            onSelectMultiple={handleAddMultiple}
+                            multiSelect={true}
+                        />
                     </div>
                 </div>
             )}

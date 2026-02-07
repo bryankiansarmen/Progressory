@@ -3,20 +3,43 @@
 import { useState, useMemo } from "react";
 import { Exercise } from "@/types";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ChevronDown, ChevronRight, Info } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronRight, Info, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface ExercisePickerProps {
     allExercises: Exercise[];
     onSelect: (exercise: Exercise) => void;
+    onSelectMultiple?: (exercises: Exercise[]) => void;
     excludeIds?: string[];
+    multiSelect?: boolean;
 }
 
-export default function ExercisePicker({ allExercises, onSelect, excludeIds = [] }: ExercisePickerProps) {
+export default function ExercisePicker({
+    allExercises,
+    onSelect,
+    onSelectMultiple,
+    excludeIds = [],
+    multiSelect = false
+}: ExercisePickerProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [muscleGroupFilter, setMuscleGroupFilter] = useState("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
+
+    const handleSelect = (exercise: Exercise) => {
+        if (multiSelect) {
+            const isSelected = selectedExercises.some(ex => ex.id === exercise.id);
+            if (isSelected) {
+                setSelectedExercises(selectedExercises.filter(ex => ex.id !== exercise.id));
+            } else {
+                setSelectedExercises([...selectedExercises, exercise]);
+            }
+        } else {
+            onSelect(exercise);
+        }
+    };
 
     const muscleGroups = [
         "all",
@@ -76,15 +99,17 @@ export default function ExercisePicker({ allExercises, onSelect, excludeIds = []
                     filteredMovements.map((movement) => {
                         const hasVariations = (movement.variations?.length || 0) > 0;
                         const isExpanded = expandedId === movement.id || searchQuery.length > 0;
+                        const isSelected = selectedExercises.some(ex => ex.id === movement.id);
 
                         return (
                             <div key={movement.id} className="space-y-1">
                                 {/* Movement Header */}
                                 <div
-                                    onClick={() => hasVariations ? setExpandedId(movement.id) : onSelect(movement)}
+                                    onClick={() => hasVariations ? setExpandedId(movement.id) : handleSelect(movement)}
                                     className={cn(
                                         "flex items-center justify-between p-3 rounded-xl border-2 transition-all group cursor-pointer",
-                                        isExpanded && hasVariations ? "border-primary/20 bg-primary/5 shadow-sm" : "border-transparent hover:bg-muted"
+                                        isExpanded && hasVariations ? "border-primary/20 bg-primary/5 shadow-sm" :
+                                            isSelected ? "border-primary bg-primary/5 shadow-sm" : "border-transparent hover:bg-muted"
                                     )}
                                 >
                                     <div className="flex items-center gap-3">
@@ -97,7 +122,10 @@ export default function ExercisePicker({ allExercises, onSelect, excludeIds = []
                                             </div>
                                         )}
                                         <div className="flex flex-col">
-                                            <span className="font-bold tracking-tight text-foreground group-hover:text-primary transition-colors">
+                                            <span className={cn(
+                                                "font-bold tracking-tight transition-colors",
+                                                isSelected ? "text-primary" : "text-foreground group-hover:text-primary"
+                                            )}>
                                                 {movement.name}
                                             </span>
                                             <div className="flex gap-2 mt-0.5">
@@ -114,34 +142,48 @@ export default function ExercisePicker({ allExercises, onSelect, excludeIds = []
                                     </div>
 
                                     {!hasVariations && (
-                                        <div className="p-2 bg-primary/10 rounded-full group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
-                                            <Plus className="w-4 h-4" />
+                                        <div className={cn(
+                                            "p-2 rounded-full transition-all shadow-sm",
+                                            isSelected ? "bg-primary text-white" : "bg-primary/10 group-hover:bg-primary group-hover:text-white"
+                                        )}>
+                                            {isSelected ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                                         </div>
                                     )}
                                 </div>
 
-                                {/* Variations List */}
                                 {hasVariations && isExpanded && (
                                     <div className="ml-8 space-y-1 animate-in slide-in-from-top-2 duration-300">
-                                        {movement.variations?.map((variation) => (
-                                            <div
-                                                key={variation.id}
-                                                onClick={() => onSelect(variation)}
-                                                className="flex items-center justify-between p-2 pl-4 rounded-xl border border-transparent hover:border-primary/20 hover:bg-primary/5 cursor-pointer transition-all group/var"
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-semibold text-muted-foreground group-hover/var:text-primary transition-colors">
-                                                        {variation.name}
-                                                    </span>
-                                                    <span className="text-[10px] text-primary/60 font-black uppercase tracking-widest">
-                                                        {variation.equipment || "Standard"}
-                                                    </span>
+                                        {movement.variations?.map((variation) => {
+                                            const isVarSelected = selectedExercises.some(ex => ex.id === variation.id);
+                                            return (
+                                                <div
+                                                    key={variation.id}
+                                                    onClick={() => handleSelect(variation)}
+                                                    className={cn(
+                                                        "flex items-center justify-between p-2 pl-4 rounded-xl border transition-all group/var cursor-pointer",
+                                                        isVarSelected ? "border-primary bg-primary/5" : "border-transparent hover:border-primary/20 hover:bg-primary/5"
+                                                    )}
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span className={cn(
+                                                            "text-sm font-semibold transition-colors",
+                                                            isVarSelected ? "text-primary" : "text-muted-foreground group-hover/var:text-primary"
+                                                        )}>
+                                                            {variation.name}
+                                                        </span>
+                                                        <span className="text-[10px] text-primary/60 font-black uppercase tracking-widest">
+                                                            {variation.equipment || "Standard"}
+                                                        </span>
+                                                    </div>
+                                                    <div className={cn(
+                                                        "p-1.5 rounded-full transition-all",
+                                                        isVarSelected ? "bg-primary text-white" : "bg-primary/5 group-hover/var:bg-primary group-hover/var:text-white"
+                                                    )}>
+                                                        {isVarSelected ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                                                    </div>
                                                 </div>
-                                                <div className="p-1.5 bg-primary/5 rounded-full group-hover/var:bg-primary group-hover/var:text-white transition-all">
-                                                    <Plus className="w-3 h-3" />
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -153,6 +195,18 @@ export default function ExercisePicker({ allExercises, onSelect, excludeIds = []
                     </div>
                 )}
             </div>
+
+            {multiSelect && selectedExercises.length > 0 && (
+                <div className="pt-4 border-t sticky bottom-0 bg-card z-10 animate-in slide-in-from-bottom-2 duration-300">
+                    <Button
+                        className="w-full h-11 rounded-xl font-bold shadow-lg shadow-primary/20 gap-2"
+                        onClick={() => onSelectMultiple?.(selectedExercises)}
+                    >
+                        <Check className="w-4 h-4" />
+                        Add Selected ({selectedExercises.length})
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }
