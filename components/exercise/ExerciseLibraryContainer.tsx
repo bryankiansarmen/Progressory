@@ -21,6 +21,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
     // Pagination State
     const [isLoading, setIsLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
+    const [isError, setIsError] = useState(false);
     const [offset, setOffset] = useState(initialExercises.length);
     const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -30,6 +31,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
         if (isLoading || !hasMore) return;
 
         setIsLoading(true);
+        setIsError(false);
         try {
             const nextExercises = await getExercises({
                 limit: PAGE_SIZE,
@@ -51,15 +53,23 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
             setOffset(prev => prev + nextExercises.length);
         } catch (error) {
             console.error("Failed to load more exercises:", error);
+            setIsError(true);
         } finally {
             setIsLoading(false);
         }
     }, [offset, isLoading, hasMore, searchQuery, categoryFilter, muscleGroupFilter]);
 
+    // Keep loadMore ref up to date to prevent observer recreation
+    const loadMoreRef = useRef(loadMore);
+    useEffect(() => {
+        loadMoreRef.current = loadMore;
+    }, [loadMore]);
+
     // Reset logic when filters change
     useEffect(() => {
         const resetAndFetch = async () => {
             setIsLoading(true);
+            setIsError(false);
             setOffset(0);
             setHasMore(true);
 
@@ -77,6 +87,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
                 if (results.length < PAGE_SIZE) setHasMore(false);
             } catch (error) {
                 console.error("Failed to filter exercises:", error);
+                setIsError(true);
             } finally {
                 setIsLoading(false);
             }
@@ -91,6 +102,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
             setExercises(initialExercises);
             setOffset(initialExercises.length);
             setHasMore(true);
+            setIsError(false);
         }
     }, [searchQuery, categoryFilter, muscleGroupFilter]);
 
@@ -98,8 +110,9 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
     useEffect(() => {
         const observer = new IntersectionObserver(
             entries => {
-                if (entries[0].isIntersecting && hasMore && !isLoading) {
-                    loadMore();
+                // Check isError to prevent infinite retry loop on failure
+                if (entries[0].isIntersecting && hasMore && !isLoading && !isError) {
+                    loadMoreRef.current();
                 }
             },
             { threshold: 1.0 }
@@ -114,7 +127,7 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
                 observer.unobserve(observerTarget.current);
             }
         };
-    }, [loadMore, hasMore, isLoading]);
+    }, [hasMore, isLoading, isError]); // Removed loadMore dependency
 
     const handleExerciseCreated = (newExercise: Exercise) => {
         setExercises((prev) => [newExercise, ...prev]);
@@ -142,11 +155,21 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
             </div>
 
             {/* Infinite Scroll Sentinel */}
-            <div ref={observerTarget} className="flex justify-center py-12">
+            <div ref={observerTarget} className="flex justify-center py-12 min-h-[100px]">
                 {isLoading ? (
                     <div className="flex flex-col items-center gap-3">
                         <Loader2 className="w-8 h-8 text-primary animate-spin" />
                         <p className="text-sm font-black uppercase tracking-widest text-primary/40">Loading Strength...</p>
+                    </div>
+                ) : isError ? (
+                    <div className="flex flex-col items-center gap-2">
+                        <p className="text-sm font-medium text-destructive">Failed to load more exercises.</p>
+                        <button 
+                            onClick={loadMore}
+                            className="px-4 py-2 text-sm font-medium bg-secondary hover:bg-secondary/80 rounded-md transition-colors"
+                        >
+                            Retry
+                        </button>
                     </div>
                 ) : !hasMore && exercises.length > 0 ? (
                     <p className="text-sm font-bold text-muted-foreground italic opacity-40">You've reached the end of the line. Time to lift.</p>
