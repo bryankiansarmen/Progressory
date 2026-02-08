@@ -134,6 +134,70 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
         setOffset(prev => prev + 1);
     };
 
+    const handleExerciseUpdated = (updatedExercise: Exercise) => {
+        setExercises((prev) => {
+            // Case 1: Was it a top-level exercise that's still top-level?
+            if (!updatedExercise.parentId) {
+                const wasTopLevel = prev.some(ex => ex.id === updatedExercise.id);
+                if (wasTopLevel) {
+                    return prev.map(ex => ex.id === updatedExercise.id ? { ...updatedExercise, variations: ex.variations } : ex);
+                } else {
+                    // It moved from a parent to top-level
+                    const newExercises = prev.map(ex => ({
+                        ...ex,
+                        variations: ex.variations?.filter(v => v.id !== updatedExercise.id)
+                    }));
+                    return [updatedExercise, ...newExercises];
+                }
+            }
+
+            // Case 2: It's a child exercise
+            const newExercises = prev.map(parent => {
+                // If it's the NEW parent, add or update it in variations
+                if (parent.id === updatedExercise.parentId) {
+                    const variations = parent.variations || [];
+                    const exists = variations.some(v => v.id === updatedExercise.id);
+                    return {
+                        ...parent,
+                        variations: exists 
+                            ? variations.map(v => v.id === updatedExercise.id ? updatedExercise : v)
+                            : [...variations, updatedExercise].sort((a, b) => a.name.localeCompare(b.name))
+                    };
+                }
+                // If it's NOT the new parent, ensure it's removed if it was there
+                return {
+                    ...parent,
+                    variations: parent.variations?.filter(v => v.id !== updatedExercise.id)
+                };
+            });
+
+            // If it was top-level and now has a parent, remove from top-level
+            return newExercises.filter(ex => ex.id !== updatedExercise.id);
+        });
+    };
+
+    const handleExerciseArchived = async (id: string) => {
+        try {
+            // Mock userId
+            const userId = "user_123";
+            const { archiveExercise } = await import("@/services/exercise.service");
+            await archiveExercise(id, userId);
+            
+            setExercises((prev) => {
+                // Remove from top-level
+                const filtered = prev.filter((ex) => ex.id !== id);
+                // Remove from variations
+                return filtered.map(ex => ({
+                    ...ex,
+                    variations: ex.variations?.filter(v => v.id !== id)
+                }));
+            });
+            setOffset((prev) => prev - 1);
+        } catch (error) {
+            console.error("Failed to archive exercise:", error);
+        }
+    };
+
     return (
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 sticky top-0 bg-background/80 backdrop-blur-md z-10 py-4 -mt-4">
@@ -150,7 +214,12 @@ export default function ExerciseLibraryContainer({ initialExercises }: ExerciseL
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {exercises.map((exercise) => (
-                    <ExerciseCard key={exercise.id} exercise={exercise} />
+                    <ExerciseCard 
+                        key={exercise.id} 
+                        exercise={exercise} 
+                        onExerciseUpdated={handleExerciseUpdated}
+                        onExerciseArchived={handleExerciseArchived}
+                    />
                 ))}
             </div>
 

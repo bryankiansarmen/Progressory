@@ -28,6 +28,7 @@ model Exercise {
   category    String
   muscleGroup String
   equipment   String?
+  isArchived  Boolean  @default(false)
   
   // Hierarchical grouping
   parentId    String?

@@ -23,6 +23,7 @@ export const getExercises = async (params: {
 
     const where: any = {
         parentId: null,
+        isArchived: false,
     };
 
     if (search) {
@@ -46,8 +47,22 @@ export const getExercises = async (params: {
         skip: skip,
         include: {
             variations: {
+                where: { isArchived: false },
                 orderBy: { name: "asc" }
             }
+        },
+        orderBy: { name: "asc" }
+    }) as any;
+};
+
+/**
+ * Fetch top-level exercises that can be parents for variations.
+ */
+export const getPotentialParents = async (): Promise<Exercise[]> => {
+    return await db.exercise.findMany({
+        where: {
+            parentId: null,
+            isArchived: false,
         },
         orderBy: { name: "asc" }
     }) as any;
@@ -58,8 +73,13 @@ export const getExercises = async (params: {
  */
 export const getExerciseById = async (id: string): Promise<Exercise | null> => {
     return await db.exercise.findUnique({
-        where: { id }
-    });
+        where: { id },
+        include: {
+            variations: {
+                where: { isArchived: false }
+            }
+        }
+    }) as any;
 };
 
 /**
@@ -71,10 +91,46 @@ export const createCustomExercise = async (data: {
     muscleGroup: string;
     equipment?: string;
     userId: string;
+    parentId?: string | null;
 }): Promise<Exercise> => {
     return await db.exercise.create({
         data: {
             ...data,
+        }
+    });
+};
+
+/**
+ * Updates an existing custom exercise.
+ * Includes an ownership check to ensure only the creator can modify it.
+ */
+export const updateExercise = async (id: string, userId: string, data: {
+    name?: string;
+    category?: string;
+    muscleGroup?: string;
+    equipment?: string;
+    parentId?: string | null;
+}): Promise<Exercise> => {
+    return await db.exercise.update({
+        where: { 
+            id,
+            userId // Ownership check
+        },
+        data
+    });
+};
+
+/**
+ * Archives an existing custom exercise (soft-delete).
+ */
+export const archiveExercise = async (id: string, userId: string): Promise<Exercise> => {
+    return await db.exercise.update({
+        where: { 
+            id,
+            userId // Ownership check
+        },
+        data: {
+            isArchived: true
         }
     });
 };
