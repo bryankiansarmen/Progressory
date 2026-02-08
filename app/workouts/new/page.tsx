@@ -1,9 +1,6 @@
 import WorkoutBuilderContainer from "@/components/workout/WorkoutBuilderContainer";
-import { getExercises } from "@/services/exercise.service";
 
 export default async function NewWorkoutPage() {
-    const allExercises = await getExercises();
-
     return (
         <main className="min-h-screen bg-background">
             <div className="container mx-auto py-8 px-4">
@@ -14,7 +11,7 @@ export default async function NewWorkoutPage() {
                     </p>
                 </header>
 
-                <WorkoutBuilderContainer allExercises={allExercises} />
+                <WorkoutBuilderContainer />
             </div>
         </main>
     );

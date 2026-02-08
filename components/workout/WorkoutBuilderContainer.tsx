@@ -11,10 +11,10 @@ import { createWorkout } from "@/services/workout.service";
 import { useRouter } from "next/navigation";
 
 interface WorkoutBuilderContainerProps {
-    allExercises: Exercise[];
+    // No props needed for now
 }
 
-export default function WorkoutBuilderContainer({ allExercises }: WorkoutBuilderContainerProps) {
+export default function WorkoutBuilderContainer({ }: WorkoutBuilderContainerProps) {
     const router = useRouter();
     const [workoutName, setWorkoutName] = useState("");
     const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
@@ -163,7 +163,6 @@ export default function WorkoutBuilderContainer({ allExercises }: WorkoutBuilder
                             </Button>
                         </div>
                         <ExercisePicker
-                            allExercises={allExercises}
                             onSelect={handleAddExercise}
                             onSelectMultiple={handleAddMultiple}
                             multiSelect={true}

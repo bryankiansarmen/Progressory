@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Exercise } from "@/types";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, ChevronDown, ChevronRight, Info, Check } from "lucide-react";
+import { Search, Plus, ChevronDown, ChevronRight, Info, Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getExercises } from "@/services/exercise.service";
 
 interface ExercisePickerProps {
-    allExercises: Exercise[];
     onSelect: (exercise: Exercise) => void;
     onSelectMultiple?: (exercises: Exercise[]) => void;
     excludeIds?: string[];
@@ -17,16 +17,100 @@ interface ExercisePickerProps {
 }
 
 export default function ExercisePicker({
-    allExercises,
     onSelect,
     onSelectMultiple,
     excludeIds = [],
     multiSelect = false
 }: ExercisePickerProps) {
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
     const [muscleGroupFilter, setMuscleGroupFilter] = useState("all");
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([]);
+
+    // Pagination & Loading State
+    const [exercises, setExercises] = useState<Exercise[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+    const [offset, setOffset] = useState(0);
+    const observerTarget = useRef<HTMLDivElement>(null);
+
+    const PAGE_SIZE = 20;
+
+    // Search Debouncing
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearchQuery(searchQuery);
+        }, 300);
+
+        return () => clearTimeout(handler);
+    }, [searchQuery]);
+
+    const loadMore = useCallback(async (isInitial = false) => {
+        if (isLoading || (!hasMore && !isInitial)) return;
+
+        setIsLoading(true);
+        try {
+            const currentOffset = isInitial ? 0 : offset;
+            const nextExercises = await getExercises({
+                limit: PAGE_SIZE,
+                skip: currentOffset,
+                search: debouncedSearchQuery,
+                muscleGroup: muscleGroupFilter
+            });
+
+            if (nextExercises.length < PAGE_SIZE) {
+                setHasMore(false);
+            }
+
+            setExercises(prev => {
+                const base = isInitial ? [] : prev;
+                const existingIds = new Set(base.map(ex => ex.id));
+                const uniqueNew = nextExercises.filter(ex => !existingIds.has(ex.id));
+                return [...base, ...uniqueNew];
+            });
+            setOffset(currentOffset + nextExercises.length);
+        } catch (error) {
+            console.error("Failed to load exercises in picker:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [offset, isLoading, hasMore, debouncedSearchQuery, muscleGroupFilter]);
+
+    // Keep loadMore ref up to date for observer
+    const loadMoreRef = useRef(loadMore);
+    useEffect(() => {
+        loadMoreRef.current = loadMore;
+    }, [loadMore]);
+
+    // Reset and fetch when filters change
+    useEffect(() => {
+        setHasMore(true);
+        setOffset(0);
+        loadMore(true);
+    }, [debouncedSearchQuery, muscleGroupFilter]);
+
+    // Intersection Observer for Infinite Scroll
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting && hasMore && !isLoading) {
+                    loadMoreRef.current();
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        if (observerTarget.current) {
+            observer.observe(observerTarget.current);
+        }
+
+        return () => {
+            if (observerTarget.current) {
+                observer.unobserve(observerTarget.current);
+            }
+        };
+    }, [hasMore, isLoading]);
 
     const handleSelect = (exercise: Exercise) => {
         if (multiSelect) {
@@ -58,18 +142,8 @@ export default function ExercisePicker({
     };
 
     const filteredMovements = useMemo(() => {
-        return allExercises
-            .filter((ex) => !excludeIds.includes(ex.id))
-            .filter((ex) => {
-                const matchesSearch =
-                    ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    ex.variations?.some(v => v.name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-                const matchesMuscleGroup = muscleGroupFilter === "all" || ex.muscleGroup === muscleGroupFilter;
-
-                return matchesSearch && matchesMuscleGroup;
-            });
-    }, [allExercises, searchQuery, muscleGroupFilter, excludeIds]);
+        return exercises.filter((ex) => !excludeIds.includes(ex.id));
+    }, [exercises, excludeIds]);
 
     return (
         <div className="space-y-4">
@@ -94,7 +168,7 @@ export default function ExercisePicker({
                 </div>
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+            <div className="max-h-[400px] overflow-y-auto pr-2 space-y-2 custom-scrollbar relative">
                 {filteredMovements.length > 0 ? (
                     filteredMovements.map((movement) => {
                         const hasVariations = (movement.variations?.length || 0) > 0;
@@ -189,11 +263,18 @@ export default function ExercisePicker({
                             </div>
                         );
                     })
-                ) : (
+                ) : !isLoading && (
                     <div className="text-center py-12 bg-muted/20 rounded-3xl border-2 border-dashed border-muted text-muted-foreground font-medium italic">
                         No Movements Found
                     </div>
                 )}
+
+                {/* Sentinel for Infinite Scroll */}
+                <div ref={observerTarget} className="h-10 flex items-center justify-center">
+                    {isLoading && (
+                        <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                    )}
+                </div>
             </div>
 
             {multiSelect && selectedExercises.length > 0 && (
