@@ -38,7 +38,7 @@ Core Tech Stack
 
   Language          TypeScript 5+
 
-  Database          PostgreSQL 15+
+  Database          SQLite (Development) / PostgreSQL (Production target)
 
   ORM               Prisma 5+
 
@@ -66,13 +66,11 @@ Database Schema Design
 
 Core Entities
 
-The database schema is designed to be normalized, relational, and
-scalable. Even in single-user mode, all data is properly scoped to
-support multi-user expansion.
+The database schema uses a template-instance pattern for workouts, allowing users to define routines and then log specific sessions.
 
 **1. User**
 
--   id: String (UUID or CUID)
+-   id: String (CUID)
 
 -   email: String (unique)
 
@@ -82,40 +80,31 @@ support multi-user expansion.
 
 -   updatedAt: DateTime
 
-**2. Workout**
+**2. Exercise**
 
--   id: String (UUID)
-
--   userId: String (foreign key to User)
-
--   name: String (e.g., \'Push Day\', \'Leg Day\')
-
--   date: DateTime
-
--   notes: String (optional, text field)
-
--   duration: Int (minutes, optional)
-
--   createdAt: DateTime
-
--   updatedAt: DateTime
-
-**3. Exercise**
-
--   id: String (UUID)
+-   id: String (CUID)
 
 -   name: String (e.g., \'Bench Press\', \'Squat\')
 
--   category: String (e.g., \'Chest\', \'Legs\', \'Back\')
+-   category: String (e.g., \'Chest\', \'Legs\')
 
 -   muscleGroup: String (primary muscle targeted)
 
--   equipment: String (optional, e.g., \'Barbell\', \'Dumbbell\')
+-   equipment: String (optional)
 
--   isCustom: Boolean (true if user-created, false if from default
-    library)
+-   isArchived: Boolean (soft-delete)
 
--   userId: String (nullable, null for default exercises)
+-   parentId: String (nullable, for exercise variations)
+
+-   userId: String (nullable, for user-created custom exercises)
+
+**3. Workout (Template)**
+
+-   id: String (CUID)
+
+-   userId: String (foreign key to User)
+
+-   name: String (e.g., \'Push Day\')
 
 -   createdAt: DateTime
 
@@ -123,53 +112,59 @@ support multi-user expansion.
 
 **4. WorkoutExercise**
 
-*Join table linking Workouts to Exercises with ordering*
+*Join table linking Workout Templates to Exercises with ordering*
 
--   id: String (UUID)
+-   id: String (CUID)
 
 -   workoutId: String (foreign key to Workout)
 
 -   exerciseId: String (foreign key to Exercise)
 
--   order: Int (position in workout sequence)
+-   order: Int (position in sequence)
 
--   notes: String (optional, exercise-specific notes)
+**5. WorkoutLog (Session)**
 
--   createdAt: DateTime
+*An instance of a completed or active workout session*
 
-**5. Set**
+-   id: String (CUID)
 
--   id: String (UUID)
+-   userId: String (foreign key to User)
 
--   workoutExerciseId: String (foreign key to WorkoutExercise)
+-   workoutId: String (foreign key to Workout)
 
--   setNumber: Int (1, 2, 3, etc.)
+-   date: DateTime (session start/completion date)
 
--   reps: Int (number of repetitions)
+-   duration: Int (minutes, optional)
 
--   weight: Decimal (weight lifted, nullable)
+**6. WorkoutLogEntry**
 
--   weightUnit: String (kg or lbs, default: kg)
+*Links a specific exercise to a workout session log*
 
--   rpe: Decimal (Rate of Perceived Exertion, optional, 1-10 scale)
+-   id: String (CUID)
 
--   isWarmup: Boolean (default: false)
+-   workoutLogId: String (foreign key to WorkoutLog)
 
--   completed: Boolean (default: true)
+-   exerciseId: String (foreign key to Exercise)
 
--   createdAt: DateTime
+**7. Set**
+
+-   id: String (CUID)
+
+-   logEntryId: String (foreign key to WorkoutLogEntry)
+
+-   reps: Int
+
+-   weight: Float
+
+-   isDone: Boolean (completion status)
 
 Critical Indexes
 
--   Workout: index on userId, date (for user workout history queries)
+-   Workout: index on userId
 
--   WorkoutExercise: index on workoutId (for fetching all exercises in a
-    workout)
+-   WorkoutLog: index on userId, date (for history queries)
 
--   Set: index on workoutExerciseId (for fetching all sets for an
-    exercise)
-
--   Exercise: index on userId for custom exercises, index on isCustom
+-   Exercise: index on parentId (for variations), userId
 
 Core Features
 
@@ -177,52 +172,55 @@ Phase 1 - MVP (Personal Use)
 
 **Workout Logging**
 
--   Create new workout sessions with name and date
+-   Create and manage workout templates
 
--   Add exercises from a predefined library or create custom exercises
+-   Start active workout sessions based on templates
 
--   Log sets with reps, weight, and optional RPE
+-   Add exercises to active sessions on-the-fly
 
--   Reorder exercises within a workout via drag-and-drop
+-   Log sets with reps and weight
 
--   Add notes to workouts and individual exercises
+-   Reorder exercises within a workout
+
+-   Track active session duration with a live timer
 
 **Exercise Library**
 
 -   Browse exercises by category or muscle group
 
--   Search exercises by name
+-   Search exercises by name (including variations)
+
+-   **Exercise Hierarchy:** Manage parent movements and their variations (e.g., Squat -> Goblet Squat)
+
+-   **Exercise Archiving:** Soft-delete custom exercises to keep the library clean
 
 -   Create and manage custom exercises
 
--   View exercise history (previous sets, weights, dates)
+-   View exercise history and performance trends
 
 **Workout History**
 
--   View past workouts in chronological order
+-   View past workout sessions in chronological order
 
--   Filter workouts by date range
+-   Filter sessions by date range
 
--   Edit or delete past workouts
-
--   Duplicate previous workouts as templates
+-   View detailed summaries of completed workouts
 
 **Progress Tracking**
 
--   View progress charts for individual exercises (weight over time,
-    volume over time)
+-   View progress charts for individual exercises
 
--   Track personal records (1RM, max reps at weight, total volume)
+-   Track personal records (PRs)
 
--   View workout frequency statistics (workouts per week/month)
+-   Visualize workout consistency and frequency
 
 **Dashboard**
 
--   Quick stats overview (total workouts, recent PRs, workout streak)
+-   Quick stats overview (total volume, recent PRs, consistency)
 
--   Recent workout history (last 5-7 workouts)
+-   Recent activity feed
 
--   Quick action buttons (Log New Workout, View Exercise Library)
+-   Quick actions for starting workouts and managing exercises
 
 Phase 2 - Multi-User Scaling (Future)
 
@@ -242,7 +240,7 @@ Application Architecture
 
 Project Structure
 
-*Recommended Next.js App Router structure:*
+*Current Next.js App Router structure with Service Layer:*
 
 workout-tracker/
 
@@ -250,15 +248,13 @@ workout-tracker/
 
 │ ├── (auth)/ \# Auth routes (future)
 
-│ ├── api/ \# API routes
-
 │ ├── dashboard/ \# Dashboard page
 
-│ ├── workouts/ \# Workout pages
+│ ├── workouts/ \# Workout templates and active sessions
 
-│ ├── exercises/ \# Exercise library pages
+│ ├── exercises/ \# Exercise library and management
 
-│ ├── progress/ \# Progress tracking pages
+│ ├── history/ \# Workout history and logs
 
 │ ├── layout.tsx
 
@@ -274,9 +270,19 @@ workout-tracker/
 
 │ └── charts/ \# Chart components
 
+├── services/ \# Business logic (Server Actions)
+
+│ ├── exercise.service.ts
+
+│ ├── workout.service.ts
+
+│ ├── logging.service.ts
+
+│ └── stats.service.ts
+
 ├── lib/
 
-│ ├── db/ \# Database utilities
+│ ├── db/ \# Prisma client and DB utilities
 
 │ ├── validations/ \# Zod schemas
 
@@ -288,7 +294,7 @@ workout-tracker/
 
 │ ├── schema.prisma
 
-│ └── seed.ts \# Seed data (default exercises)
+│ └── seed.ts \# Seed data
 
 ├── types/ \# TypeScript type definitions
 
@@ -296,25 +302,25 @@ workout-tracker/
 
 Data Flow
 
-1.  Client sends request to Next.js API route or Server Action
+1.  Client interacts with UI components
 
-2.  Request validated using Zod schemas
+2.  Components invoke **Server Actions** (defined in services/)
 
-3.  Prisma ORM queries/mutates PostgreSQL database
+3.  Actions validate inputs using **Zod** schemas
 
-4.  Data returned to client via API response or Server Component
+4.  Services interact with the database via **Prisma ORM**
 
-5.  React Query manages caching, invalidation, and optimistic updates
+5.  Data is returned directly to the component or managed via **React Query** for caching and optimistic updates
 
 State Management Strategy
 
--   Server State: React Query (TanStack Query) for all data fetching
+-   Server State: React Query (TanStack Query) for managing data fetched via Server Actions
 
 -   Form State: React Hook Form for complex forms
 
--   URL State: Next.js searchParams for filters and pagination
+-   URL State: Next.js searchParams for filters, pagination, and active session state
 
--   Local UI State: React useState/useReducer or Context API
+-   Local UI State: React useState/useReducer or Context API for ephemeral UI state
 
 Coding Standards and Best Practices
 
@@ -326,21 +332,19 @@ TypeScript Guidelines
 
 -   Avoid \'any\' type; use \'unknown\' if type is truly dynamic
 
--   Generate types from Prisma schema, do not duplicate manually
+-   Generate types from Prisma schema or define shared types in types/
 
 -   Use discriminated unions for complex state
 
 React/Next.js Best Practices
 
--   Default to Server Components unless client interaction is needed
+-   Default to Server Components for data fetching (calling services directly)
 
--   Use Server Actions for mutations when appropriate
+-   Use Server Actions for all mutations and client-side data fetching needs
 
 -   Colocate components with their usage when possible
 
 -   Extract reusable logic into custom hooks
-
--   Use dynamic imports for large client components
 
 -   Implement loading and error states for all async operations
 
@@ -348,28 +352,23 @@ Database and Prisma Guidelines
 
 -   Always scope queries by userId (even in single-user mode)
 
--   Use transactions for operations affecting multiple tables
+-   Use transactions for operations affecting multiple tables (e.g., creating a log with entries)
 
--   Implement soft deletes for user data (add deletedAt field)
+-   Implement soft deletes for exercises (isArchived)
 
 -   Use include/select to fetch only needed fields
 
 -   Run migrations in order; never edit existing migrations
 
--   Seed database with default exercise library
-
 Validation and Error Handling
 
--   Define Zod schemas for all API inputs and form data
+-   Define Zod schemas for all service inputs and form data
 
--   Validate data at API boundaries (before database operations)
+-   Validate data at service boundaries (before database operations)
 
--   Return consistent error response format from API routes
+-   Return structured error objects from Server Actions
 
--   Display user-friendly error messages in UI
-
--   Log errors server-side for debugging (console.error in dev, proper
-    logging in prod)
+-   Display user-friendly error messages in UI using toast notifications
 
 UI/UX Guidelines
 
@@ -383,77 +382,57 @@ UI/UX Guidelines
 
 -   Use optimistic updates for better perceived performance
 
--   Ensure accessibility (semantic HTML, ARIA labels, keyboard
-    navigation)
-
 Code Organization
 
 -   Keep files under 300 lines; split into smaller modules if exceeded
 
--   Use barrel exports (index.ts) for clean imports
+-   Use barrel exports (index.ts) for clean imports in the services directory
 
--   Name files and components using PascalCase for components,
-    kebab-case for utilities
+-   Name files and components using PascalCase for components, kebab-case for utilities
 
--   Group related functionality (e.g., workout CRUD in workout module)
+-   Group related functionality in dedicated service files
 
--   Document complex logic with comments; use JSDoc for public functions
+Service Layer Design
 
-API Design and Endpoints
+The application uses a Service Layer pattern with Next.js Server Actions to encapsulate business logic and database interactions.
 
-RESTful API Structure
+**Exercise Service**
 
-All API routes follow REST conventions with consistent response formats.
+-   `getExercises(params)`: Fetch paginated, filtered list of exercises.
 
-  ----------------- ---------------------------- -----------------------------------
-  **Method**        **Endpoint**                 **Description**
+-   `getExerciseById(id)`: Fetch single exercise with variations.
 
-  GET               /api/workouts                List all workouts for user
+-   `createCustomExercise(data)`: Persist new user-defined exercise.
 
-  POST              /api/workouts                Create new workout
+-   `updateExercise(id, userId, data)`: Update exercise details.
 
-  GET               /api/workouts/:id            Get single workout with exercises
+-   `archiveExercise(id, userId)`: Soft-delete an exercise.
 
-  PATCH             /api/workouts/:id            Update workout
+**Workout Service**
 
-  DELETE            /api/workouts/:id            Delete workout
+-   `getWorkouts(userId)`: Fetch all workout templates for a user.
 
-  GET               /api/exercises               List all exercises
+-   `getWorkoutById(id)`: Fetch template with exercise sequence.
 
-  POST              /api/exercises               Create custom exercise
+-   `createWorkout(data)`: Create a new workout template.
 
-  GET               /api/exercises/:id/history   Get exercise performance history
+-   `deleteWorkout(id)`: Remove a workout template.
 
-  POST              /api/sets                    Create new set
+**Logging Service**
 
-  PATCH             /api/sets/:id                Update set details
+-   `startWorkoutLog(workoutId, userId)`: Initialize a new workout session log.
 
-  GET               /api/stats/dashboard         Get dashboard statistics
-  ----------------- ---------------------------- -----------------------------------
+-   `addLogEntry(logId, exerciseId)`: Add an exercise entry to an active log.
 
-Response Format
+-   `updateSet(setId, data)`: Update reps/weight for a specific set.
 
-**Success Response:**
+-   `completeWorkoutLog(logId)`: Mark session as finished and record duration.
 
-{
+**Stats Service**
 
-\"success\": true,
+-   `getDashboardStats(userId)`: Aggregate PRs, frequency, and volume for dashboard.
 
-\"data\": { \... }
-
-}
-
-**Error Response:**
-
-{
-
-\"success\": false,
-
-\"error\": \"Error message\",
-
-\"code\": \"ERROR_CODE\"
-
-}
+-   `getExerciseHistory(exerciseId, userId)`: Fetch performance trends for a specific movement.
 
 Testing Strategy
 
@@ -474,7 +453,7 @@ Phase 2 Testing (Pre-Scaling)
 
 -   Unit tests for utility functions and critical logic (Vitest)
 
--   Integration tests for API routes
+-   Integration tests for Server Actions and Services
 
 -   E2E tests for critical user flows (Playwright)
 
